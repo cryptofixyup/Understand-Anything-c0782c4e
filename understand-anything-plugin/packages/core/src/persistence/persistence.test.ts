@@ -201,4 +201,109 @@ describe("persistence", () => {
       expect(loaded).toEqual({ autoUpdate: false, outputLanguage: "en" });
     });
   });
+
+  describe("path sanitization", () => {
+    function graphWithPaths(filePaths: (string | undefined)[]): KnowledgeGraph {
+      return {
+        ...sampleGraph,
+        nodes: filePaths.map((fp, i) => ({
+          id: `node-${i}`,
+          type: "file" as const,
+          name: `file-${i}.ts`,
+          ...(fp !== undefined ? { filePath: fp } : {}),
+          summary: "A file",
+          tags: [],
+          complexity: "simple" as const,
+        })),
+      };
+    }
+
+    it("converts absolute paths inside project root to relative paths", () => {
+      const absolutePath = join(tempDir, "src", "auth.ts");
+      const graph = graphWithPaths([absolutePath]);
+
+      saveGraph(tempDir, graph);
+      const loaded = loadGraph(tempDir, { validate: false });
+
+      expect(loaded!.nodes[0].filePath).toBe("src/auth.ts");
+    });
+
+    it("converts nested absolute paths inside project root", () => {
+      const absolutePath = join(tempDir, "packages", "core", "src", "index.ts");
+      const graph = graphWithPaths([absolutePath]);
+
+      saveGraph(tempDir, graph);
+      const loaded = loadGraph(tempDir, { validate: false });
+
+      expect(loaded!.nodes[0].filePath).toBe("packages/core/src/index.ts");
+    });
+
+    it("keeps only the filename for absolute paths outside the project root", () => {
+      const outsidePath = "/Users/alice/other-project/secret.ts";
+      const graph = graphWithPaths([outsidePath]);
+
+      saveGraph(tempDir, graph);
+      const loaded = loadGraph(tempDir, { validate: false });
+
+      expect(loaded!.nodes[0].filePath).toBe("secret.ts");
+      expect(loaded!.nodes[0].filePath).not.toContain("alice");
+      expect(loaded!.nodes[0].filePath).not.toContain("other-project");
+    });
+
+    it("leaves already-relative paths untouched", () => {
+      const graph = graphWithPaths(["src/index.ts", "lib/utils.ts"]);
+
+      saveGraph(tempDir, graph);
+      const loaded = loadGraph(tempDir, { validate: false });
+
+      expect(loaded!.nodes[0].filePath).toBe("src/index.ts");
+      expect(loaded!.nodes[1].filePath).toBe("lib/utils.ts");
+    });
+
+    it("handles mixed absolute and relative paths in the same graph", () => {
+      const absoluteInside = join(tempDir, "src", "api.ts");
+      const absoluteOutside = "/home/developer/other/secret.ts";
+      const relative = "src/utils.ts";
+      const graph = graphWithPaths([absoluteInside, absoluteOutside, relative]);
+
+      saveGraph(tempDir, graph);
+      const loaded = loadGraph(tempDir, { validate: false });
+
+      expect(loaded!.nodes[0].filePath).toBe("src/api.ts");
+      expect(loaded!.nodes[1].filePath).toBe("secret.ts");
+      expect(loaded!.nodes[2].filePath).toBe("src/utils.ts");
+    });
+
+    it("handles nodes without a filePath field", () => {
+      const graph: KnowledgeGraph = {
+        ...sampleGraph,
+        nodes: [
+          {
+            id: "no-path-node",
+            type: "function",
+            name: "doSomething",
+            summary: "A function node with no filePath",
+            tags: [],
+            complexity: "simple",
+          },
+        ],
+      };
+
+      saveGraph(tempDir, graph);
+      const loaded = loadGraph(tempDir, { validate: false });
+
+      expect(loaded!.nodes[0].filePath).toBeUndefined();
+    });
+
+    it("sanitizes domain graph paths the same way", async () => {
+      const { saveDomainGraph, loadDomainGraph } = await import("./index.js");
+      const absolutePath = join(tempDir, "domain", "user.ts");
+      const graph = graphWithPaths([absolutePath]);
+
+      saveDomainGraph(tempDir, graph);
+      const loaded = loadDomainGraph(tempDir, { validate: false });
+
+      expect(loaded!.nodes[0].filePath).toBe("domain/user.ts");
+    });
+  });
 });
