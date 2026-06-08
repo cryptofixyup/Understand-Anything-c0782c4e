@@ -145,6 +145,56 @@ describe("LanguageRegistry", () => {
     });
   });
 
+  describe("content-based detection via getForFileWithContent", () => {
+    it("detects Kubernetes manifests by path pattern", () => {
+      const registry = LanguageRegistry.createDefault();
+      expect(registry.getForFileWithContent("infra/k8s/deployment.yaml")?.id).toBe("kubernetes");
+      expect(registry.getForFileWithContent("project/kubernetes/service.yml")?.id).toBe("kubernetes");
+      expect(registry.getForFileWithContent("helm/charts/ingress.yaml")?.id).toBe("kubernetes");
+    });
+
+    it("detects Kubernetes manifests by content when path is ambiguous", () => {
+      const registry = LanguageRegistry.createDefault();
+      const k8sContent = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: my-app\n";
+      expect(registry.getForFileWithContent("config/app.yaml", k8sContent)?.id).toBe("kubernetes");
+    });
+
+    it("does not detect Kubernetes for non-YAML files", () => {
+      const registry = LanguageRegistry.createDefault();
+      expect(registry.getForFileWithContent("k8s/config.json")?.id).not.toBe("kubernetes");
+    });
+
+    it("detects JSON Schema by .schema.json suffix", () => {
+      const registry = LanguageRegistry.createDefault();
+      expect(registry.getForFileWithContent("schemas/user.schema.json")?.id).toBe("json-schema");
+      expect(registry.getForFileWithContent("types/api.schema.json")?.id).toBe("json-schema");
+    });
+
+    it("detects JSON Schema by $schema field in content", () => {
+      const registry = LanguageRegistry.createDefault();
+      const jsonSchemaContent = '{\n  "$schema": "http://json-schema.org/draft-07/schema#",\n  "type": "object"\n}';
+      expect(registry.getForFileWithContent("config/options.json", jsonSchemaContent)?.id).toBe("json-schema");
+    });
+
+    it("falls back to extension match when no detector fires", () => {
+      const registry = LanguageRegistry.createDefault();
+      expect(registry.getForFileWithContent("src/index.ts")?.id).toBe("typescript");
+      expect(registry.getForFileWithContent("config.yaml")?.id).toBe("yaml");
+    });
+
+    it("getForFileWithContent returns null for unknown files", () => {
+      const registry = LanguageRegistry.createDefault();
+      expect(registry.getForFileWithContent("file.unknownext")).toBeNull();
+    });
+
+    it("detector stored separately does not affect getForFile", () => {
+      const registry = LanguageRegistry.createDefault();
+      // getForFile uses only extension/filename, not detectors
+      expect(registry.getForFile("k8s/deployment.yaml")?.id).toBe("yaml");
+      expect(registry.getForFile("user.schema.json")?.id).toBe("json");
+    });
+  });
+
   describe("StrictLanguageConfigSchema refinement", () => {
     it("rejects configs with empty extensions AND no filenames", () => {
       const result = StrictLanguageConfigSchema.safeParse({

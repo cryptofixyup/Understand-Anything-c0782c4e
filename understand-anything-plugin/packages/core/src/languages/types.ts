@@ -33,7 +33,9 @@ export const LanguageConfigSchema = z.object({
   filePatterns: FilePatternConfigSchema,
 });
 
-export type LanguageConfig = z.infer<typeof LanguageConfigSchema>;
+export type LanguageConfig = z.infer<typeof LanguageConfigSchema> & {
+  detect?: (filePath: string, content?: string) => boolean;
+};
 
 /**
  * Strict schema with refinement: ensures at least one extension or filename

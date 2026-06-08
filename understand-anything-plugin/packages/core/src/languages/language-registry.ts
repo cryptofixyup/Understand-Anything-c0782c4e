@@ -10,8 +10,11 @@ export class LanguageRegistry {
   private byId = new Map<string, LanguageConfig>();
   private byExtension = new Map<string, LanguageConfig>();
   private byFilename = new Map<string, LanguageConfig>();
+  private detectors = new Map<string, (filePath: string, content?: string) => boolean>();
 
   register(config: LanguageConfig): void {
+    // Save detect before Zod strips it (functions aren't in the schema)
+    const detect = config.detect;
     const parsed = LanguageConfigSchema.parse(config);
     this.byId.set(parsed.id, parsed);
     for (const ext of parsed.extensions) {
@@ -23,6 +26,9 @@ export class LanguageRegistry {
       for (const filename of parsed.filenames) {
         this.byFilename.set(filename.toLowerCase(), parsed);
       }
+    }
+    if (detect) {
+      this.detectors.set(parsed.id, detect);
     }
   }
 
@@ -45,6 +51,20 @@ export class LanguageRegistry {
     if (lastDot === -1) return null;
     const ext = filePath.slice(lastDot).toLowerCase();
     return this.getByExtension(ext);
+  }
+
+  /**
+   * Like getForFile but also runs registered content-based detectors.
+   * Detectors are checked first; the first one that returns true wins.
+   * Falls back to extension/filename matching when no detector matches.
+   */
+  getForFileWithContent(filePath: string, content?: string): LanguageConfig | null {
+    for (const [id, detect] of this.detectors) {
+      if (detect(filePath, content)) {
+        return this.byId.get(id) ?? null;
+      }
+    }
+    return this.getForFile(filePath);
   }
 
   getAllLanguages(): LanguageConfig[] {

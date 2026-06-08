@@ -1,10 +1,6 @@
 import type { LanguageConfig } from "../types.js";
 
-// TODO: JSON Schema files have no unique extension — *.schema.json files will match
-// `jsonConfigConfig` by the `.json` extension. Detection requires content-based
-// heuristics (e.g., checking for `"$schema"` or `"type"` keys at the root level).
-// A future content-based detection pass could re-classify them as JSON Schema.
-export const jsonSchemaConfig = {
+export const jsonSchemaConfig: LanguageConfig = {
   id: "json-schema",
   displayName: "JSON Schema",
   extensions: [],
@@ -15,4 +11,14 @@ export const jsonSchemaConfig = {
     tests: [],
     config: [],
   },
-} satisfies LanguageConfig;
+  detect(filePath: string, content?: string): boolean {
+    const lower = filePath.toLowerCase();
+    // Filename suffix heuristic: *.schema.json is the dominant convention
+    if (lower.endsWith(".schema.json")) return true;
+    // Content heuristic: JSON object with a $schema field at the root
+    if (content && (lower.endsWith(".json") || lower.endsWith(".yaml") || lower.endsWith(".yml"))) {
+      return content.includes('"$schema"') || content.includes("$schema:");
+    }
+    return false;
+  },
+};
